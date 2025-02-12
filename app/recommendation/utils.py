@@ -1,7 +1,7 @@
 from datetime import datetime
 import json
 from typing import Optional, List
-from app.database.database import redis_client
+from database.database import redis_client
 
 CACHE_EXPIRATION = 3600
 def get_current_season() -> str:

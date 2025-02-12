@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-from app.database import models
-from app.database.database import SessionLocal
+from database import models
+from database.database import SessionLocal
 from datetime import datetime, timedelta
 from main import logger
 import pandas as pd
@@ -8,8 +8,7 @@ import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import svds
 import scipy.sparse as sp
-from utils import get_current_season, cache_recommendations, get_cached_recommendations
-from apscheduler.schedulers.background import BackgroundScheduler
+from .utils import get_current_season, cache_recommendations, get_cached_recommendations
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import List, Optional
 import asyncio
@@ -158,8 +157,8 @@ async def get_personalized_recommendations(user_id: int, db: Session, limit: int
 
     personalized_products = (
         db.query(models.Product.product_id)
-        .filter(models.Product.metadata.contains(f'"device_type": "{device_type}"'))
-        .filter(models.Product.metadata.contains(f'"active_hours": "{current_hour}"'))
+        .filter(models.Product.meta.contains(f'"device_type": "{device_type}"'))
+        .filter(models.Product.meta.contains(f'"active_hours": "{current_hour}"'))
         .limit(limit)
         .all()
     )

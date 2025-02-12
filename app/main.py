@@ -1,12 +1,9 @@
 from fastapi import FastAPI
 from database import models, database
-import logging
-from recommendation.scheduler import scheduler  # Import the scheduler to initialize it
+from config import logger
+from recommendation.recommendations import router as recommendations_router
 
 models.Base.metadata.create_all(bind=database.engine)
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Recommendation System API", 
@@ -15,7 +12,6 @@ app = FastAPI(
 
 @app.get("/", summary="Root Endpoint", tags=["Health Check"])
 def read_root():
-    """Root endpoint to check API status."""
-    return {"message": "Welcome to the Recommendation System API"}
+    return {"message": "Hello"}
 
-scheduler.start()
+app.include_router(recommendations_router)

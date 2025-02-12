@@ -20,7 +20,7 @@ class Product(Base):
     category = Column(String, nullable=False)
     tags = Column(String, nullable=True)
     rating = Column(Float, nullable=False)
-    metadata = Column(Text, nullable=True)
+    meta = Column(Text, nullable=True)
 
 class BrowsingHistory(Base):
     __tablename__ = "browsing_history"

@@ -1,12 +1,11 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 import asyncio
-import logging
 from .services import get_hybrid_recommendations
 from .utils import cache_recommendations
-from app.database import models
-from app.database.database import SessionLocal
-from main import logger
+from database import models
+from database.database import SessionLocal
+from config import logger
 
 scheduler = BackgroundScheduler()
 
@@ -26,4 +25,5 @@ def precompute_recommendations(db: Session):
     logger.info("Batch recommendation computation complete.")
 
 scheduler.add_job(precompute_recommendations, 'interval', hours=6, args=[SessionLocal()])
+
 scheduler.start()

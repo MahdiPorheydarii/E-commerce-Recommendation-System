@@ -1,17 +1,57 @@
 from sqlalchemy.orm import Session
-from collections import Counter
 from app.database import models
-from app.database.database import redis_client
+from app.database.database import redis_client, SessionLocal
 from datetime import datetime, timedelta
 import json
 import pandas as pd
+import asyncio
+import logging
+import numpy as np
+import scipy.sparse as sp
+from scipy.sparse.linalg import svds
+import scipy.sparse as sp
 from utils import get_current_season
+from apscheduler.schedulers.background import BackgroundScheduler
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Optional
 import asyncio
 
-CACHE_EXPIRATION = 3600
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+CACHE_EXPIRATION = 3600  # 1 hour cache expiration
+
+async def get_hybrid_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
+    """
+    Get hybrid recommendations while ensuring diversity across product categories.
+    """
+    logger.info(f"Fetching recommendations for user_id={user_id}")
+
+    cached_recommendations = await get_cached_recommendations(user_id)
+    if cached_recommendations:
+        logger.info(f"Cache hit for user_id={user_id}")
+        return cached_recommendations
+
+    collaborative, content_based, personalized, contextual, svd = await asyncio.gather(
+        get_user_based_recommendations(user_id, db, limit),
+        get_content_based_recommendations(user_id, db, limit),
+        get_personalized_recommendations(user_id, db, limit),
+        get_contextual_recommendations(user_id, db, limit),
+        get_svd_recommendations(user_id, db, limit)  # Now using SVD instead of ALS
+    )
+
+    combined_recommendations = list(set(collaborative + content_based + personalized + contextual + svd))
+
+    if len(combined_recommendations) < limit:
+        trending = await get_trending_products(db, user_id, limit)
+        combined_recommendations += trending
+
+    final_recommendations = await enforce_diversity(combined_recommendations, db, limit)
+    
+    await cache_recommendations(user_id, final_recommendations)
+    logger.info(f"Final recommendations for user_id={user_id}: {final_recommendations}")
+    
+    return final_recommendations
 
 async def get_interacted_product_ids(user_id: int, db: Session) -> set:
     """
@@ -120,19 +160,27 @@ async def get_personalized_recommendations(user_id: int, db: Session, limit: int
 
 async def get_contextual_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     """
-    Get recommendations based on contextual signals.
+    Get recommendations based on contextual signals, now including time of day and device type.
     """
     user = db.query(models.User).filter_by(user_id=user_id).first()
     if not user:
         return await get_trending_products(db, user_id, limit)  # Cold start fallback
 
     current_day = datetime.utcnow().strftime('%A')
-    current_season = get_current_season()
+    current_hour = datetime.utcnow().hour
+    time_of_day = (
+        "Morning" if 5 <= current_hour < 12 else
+        "Afternoon" if 12 <= current_hour < 17 else
+        "Evening" if 17 <= current_hour < 21 else
+        "Night"
+    )
 
     contextual_signals = db.query(models.ContextualSignal).all()
     relevant_signals = [
         signal for signal in contextual_signals
-        if current_day in signal.peak_days.split(',') or signal.season == current_season
+        if (current_day in signal.peak_days.split(',') or signal.season == get_current_season()) and
+           (signal.time_of_day is None or signal.time_of_day == time_of_day) and
+           (signal.device_type is None or signal.device_type == user.device)
     ]
 
     if not relevant_signals:
@@ -147,54 +195,6 @@ async def get_contextual_recommendations(user_id: int, db: Session, limit: int =
     )
 
     return [p.product_id for p in contextual_products]
-
-async def get_hybrid_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
-    """
-    Get hybrid recommendations by combining collaborative, content-based, personalized, and contextual recommendations.
-    """
-    cached_recommendations = await get_cached_recommendations(user_id)
-    if cached_recommendations:
-        return cached_recommendations
-
-    collaborative, content_based, personalized, contextual = await asyncio.gather(
-        get_user_based_recommendations(user_id, db, limit),
-        get_content_based_recommendations(user_id, db, limit),
-        get_personalized_recommendations(user_id, db, limit),
-        get_contextual_recommendations(user_id, db, limit)
-    )
-
-    combined_recommendations = list(set(collaborative + content_based + personalized + contextual))
-    if len(combined_recommendations) < limit:
-        trending = await get_trending_products(db, user_id, limit)
-        combined_recommendations += trending
-
-    if len(combined_recommendations) < limit:
-        all_products = db.query(models.Product).all()
-        product_tags = {p.product_id: p.tags for p in all_products}
-        tfidf_vectorizer = TfidfVectorizer()
-        tfidf_matrix = tfidf_vectorizer.fit_transform([product_tags[pid] for pid in product_tags])
-        cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
-
-        for pid in product_tags:
-            if pid not in combined_recommendations:
-                similar_products = cosine_sim[pid].argsort()[::-1]
-                for spid in similar_products:
-                    if spid not in combined_recommendations:
-                        combined_recommendations.append(spid)
-                        break
-            if len(combined_recommendations) >= limit:
-                break
-
-    final_recommendations = combined_recommendations[:limit]
-    await cache_recommendations(user_id, final_recommendations)
-    return final_recommendations
-
-async def cache_recommendations(user_id: int, recommendations: List[int]) -> None:
-    redis_client.setex(f"recommendations:{user_id}", CACHE_EXPIRATION, json.dumps(recommendations))
-
-async def get_cached_recommendations(user_id: int) -> Optional[List[int]]:
-    cached_data = redis_client.get(f"recommendations:{user_id}")
-    return json.loads(cached_data) if cached_data else None
 
 async def explain_recommendation(user_id: int, product_id: int, db: Session) -> Optional[str]:
     """
@@ -231,3 +231,107 @@ async def explain_recommendation(user_id: int, product_id: int, db: Session) -> 
         return "Recommended because you have viewed similar products."
 
     return "Recommended based on trending and popular products."
+
+async def get_svd_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
+    """
+    Uses Singular Value Decomposition (SVD) for collaborative filtering without external libraries.
+    """
+    logger.info(f"Computing SVD recommendations for user_id={user_id}")
+
+    interactions = db.query(models.PurchaseHistory).all()
+
+    data = {
+        "user_id": [i.user_id for i in interactions],
+        "product_id": [i.product_id for i in interactions],
+        "rating": [i.quantity for i in interactions]  # Using quantity as implicit feedback
+    }
+
+    df = pd.DataFrame(data)
+
+    if df.empty or user_id not in df["user_id"].values:
+        logger.warning(f"No interactions found for user_id={user_id}, falling back to trending products")
+        return await get_trending_products(db, user_id, limit)  # Cold start fallback
+
+    # Convert to sparse matrix
+    unique_users = df["user_id"].unique()
+    unique_products = df["product_id"].unique()
+
+    user_map = {u: i for i, u in enumerate(unique_users)}
+    product_map = {p: i for i, p in enumerate(unique_products)}
+
+    user_inv_map = {i: u for u, i in user_map.items()}
+    product_inv_map = {i: p for p, i in product_map.items()}
+
+    rows = df["user_id"].map(user_map)
+    cols = df["product_id"].map(product_map)
+    values = df["rating"].astype(float)
+
+    sparse_matrix = sp.csr_matrix((values, (rows, cols)), shape=(len(unique_users), len(unique_products)))
+
+    # Apply SVD (Singular Value Decomposition)
+    U, sigma, Vt = svds(sparse_matrix, k=min(50, min(sparse_matrix.shape) - 1))
+    sigma = np.diag(sigma)
+
+    # Compute user recommendations
+    user_idx = user_map.get(user_id)
+    if user_idx is None:
+        logger.warning(f"user_id={user_id} not found in SVD model, falling back to trending products")
+        return await get_trending_products(db, user_id, limit)  # Cold start fallback
+
+    user_ratings = np.dot(np.dot(U[user_idx, :], sigma), Vt)
+    recommended_idx = np.argsort(-user_ratings)[:limit]  # Sort and take top N
+
+    recommended_product_ids = [product_inv_map[i] for i in recommended_idx if i in product_inv_map]
+
+    logger.info(f"SVD recommendations for user_id={user_id}: {recommended_product_ids}")
+    return recommended_product_ids
+
+async def enforce_diversity(recommendations: List[int], db: Session, limit: int) -> List[int]:
+    """
+    Ensures recommendations are diverse by including products from different categories.
+    """
+    product_details = db.query(models.Product).filter(models.Product.product_id.in_(recommendations)).all()
+    category_map = {}
+    final_recommendations = []
+
+    for product in product_details:
+        if product.category not in category_map:
+            category_map[product.category] = []
+        category_map[product.category].append(product.product_id)
+
+    while len(final_recommendations) < limit:
+        for category, products in category_map.items():
+            if products:
+                final_recommendations.append(products.pop(0))
+            if len(final_recommendations) >= limit:
+                break
+
+    logger.info(f"Final diversified recommendations: {final_recommendations}")
+    return final_recommendations
+
+scheduler = BackgroundScheduler()
+
+def precompute_recommendations(db: Session):
+    """
+    Runs a batch job to precompute recommendations for all active users.
+    """
+    logger.info("Starting batch recommendation computation...")
+    
+    users = db.query(models.User.user_id).all()
+    user_ids = [u.user_id for u in users]
+
+    for user_id in user_ids:
+        recommendations = asyncio.run(get_hybrid_recommendations(user_id, db, limit=10))
+        cache_recommendations(user_id, recommendations)
+
+    logger.info("Batch recommendation computation complete.")
+
+scheduler.add_job(precompute_recommendations, 'interval', hours=6, args=[SessionLocal()])
+scheduler.start()
+
+async def cache_recommendations(user_id: int, recommendations: List[int]) -> None:
+    redis_client.setex(f"recommendations:{user_id}", CACHE_EXPIRATION, json.dumps(recommendations))
+
+async def get_cached_recommendations(user_id: int) -> Optional[List[int]]:
+    cached_data = redis_client.get(f"recommendations:{user_id}")
+    return json.loads(cached_data) if cached_data else None

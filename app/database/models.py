@@ -59,3 +59,5 @@ class ContextualSignal(Base):
     category = Column(String, nullable=False)
     peak_days = Column(String, nullable=False)  # Comma-separated list of peak days
     season = Column(String, nullable=False)
+    time_of_day = Column(String, nullable=True)  # New: Morning, Afternoon, Evening, Night
+    device_type = Column(String, nullable=True)  # New: Mobile, Desktop

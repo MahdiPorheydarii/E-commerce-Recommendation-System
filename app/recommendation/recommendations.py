@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import database, models
-from .services import get_hybrid_recommendations, explain_recommendation
-from database.models import Product
+from ..database import database, models
+from .services import get_hybrid_recommendations
+from .utils import explain_recommendation
+from ..database.models import Product
 from .schemas import ProductResponse
 from typing import List, Optional
 

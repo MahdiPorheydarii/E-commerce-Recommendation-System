@@ -1,8 +1,8 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-from database import models
+from ..database import models
 from datetime import datetime, timedelta
-from config import logger
+from ..config import logger
 from scipy.sparse.linalg import svds
 import scipy.sparse as sp
 import pandas as pd

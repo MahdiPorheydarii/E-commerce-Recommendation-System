@@ -2,10 +2,10 @@ from datetime import datetime
 import json
 from fastapi import HTTPException
 from typing import Optional, List
-from database.database import redis_client
+from ..database.database import redis_client
 from sqlalchemy.orm import Session
-from database import models
-from config import logger
+from ..database import models
+from ..config import logger
 
 CACHE_EXPIRATION = 3600
 from datetime import datetime

@@ -52,3 +52,10 @@ class UserInteraction(Base):
     context = Column(String, nullable=True)  # e.g., time_of_day, day_of_week, device_type
     user = relationship("User", back_populates="interactions")
     product = relationship("Product")
+
+class ContextualSignal(Base):
+    __tablename__ = "contextual_signals"
+    id = Column(Integer, primary_key=True, index=True)
+    category = Column(String, nullable=False)
+    peak_days = Column(String, nullable=False)  # Comma-separated list of peak days
+    season = Column(String, nullable=False)

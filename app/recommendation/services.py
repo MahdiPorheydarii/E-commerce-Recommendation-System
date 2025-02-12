@@ -1,18 +1,17 @@
 from sqlalchemy.orm import Session
 from collections import Counter
-from app.database import models
-from app.database.database import redis_client
+from app import models
+from app.database import redis_client
 from datetime import datetime
 import json
 import pandas as pd
+import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from typing import List, Optional
 
 CACHE_EXPIRATION = 3600
 
-def get_trending_products(db: Session, limit: int = 5):
-    """
-    Fetches trending products based on most purchased items.
-    """
+def get_trending_products(db: Session, limit: int = 5) -> List[int]:
     trending = (
         db.query(models.PurchaseHistory.product_id)
         .group_by(models.PurchaseHistory.product_id)
@@ -22,10 +21,7 @@ def get_trending_products(db: Session, limit: int = 5):
     )
     return [p.product_id for p in trending]
 
-def get_user_based_recommendations(user_id: int, db: Session, limit: int = 5):
-    """
-    Collaborative filtering: Recommend products based on similar users' interactions.
-    """
+def get_user_based_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     user_purchases = db.query(models.PurchaseHistory).filter_by(user_id=user_id).all()
     purchased_product_ids = [p.product_id for p in user_purchases]
 
@@ -55,10 +51,7 @@ def get_user_based_recommendations(user_id: int, db: Session, limit: int = 5):
 
     return recommended_products[:limit]
 
-def get_content_based_recommendations(user_id: int, db: Session, limit: int = 5):
-    """
-    Content-based filtering: Recommend products similar to ones the user has viewed.
-    """
+def get_content_based_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     browsing_history = db.query(models.BrowsingHistory).filter_by(user_id=user_id).all()
     viewed_product_ids = [b.product_id for b in browsing_history]
 
@@ -87,10 +80,7 @@ def get_content_based_recommendations(user_id: int, db: Session, limit: int = 5)
 
     return similar_products[:limit]
 
-def get_personalized_recommendations(user_id: int, db: Session, limit: int = 5):
-    """
-    Personalization: Recommend products based on user's browsing patterns and device type.
-    """
+def get_personalized_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     user = db.query(models.User).filter_by(user_id=user_id).first()
     if not user:
         return get_trending_products(db, limit)  # Cold start fallback
@@ -109,10 +99,7 @@ def get_personalized_recommendations(user_id: int, db: Session, limit: int = 5):
 
     return [p.product_id for p in personalized_products]
 
-def get_hybrid_recommendations(user_id: int, db: Session, limit: int = 10):
-    """
-    Combines multiple recommendation strategies with caching.
-    """
+def get_hybrid_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     cached_recommendations = get_cached_recommendations(user_id)
     if cached_recommendations:
         return cached_recommendations
@@ -128,23 +115,20 @@ def get_hybrid_recommendations(user_id: int, db: Session, limit: int = 10):
     cache_recommendations(user_id, final_recommendations)
     return final_recommendations
 
-def cache_recommendations(user_id: int, recommendations: list[int]):
-    """
-    Store recommendations in Redis with an expiration time.
-    """
+def cache_recommendations(user_id: int, recommendations: List[int]) -> None:
     redis_client.setex(f"recommendations:{user_id}", CACHE_EXPIRATION, json.dumps(recommendations))
 
-def get_cached_recommendations(user_id: int):
-    """
-    Retrieve cached recommendations if available.
-    """
+def get_cached_recommendations(user_id: int) -> Optional[List[int]]:
     cached_data = redis_client.get(f"recommendations:{user_id}")
     return json.loads(cached_data) if cached_data else None
 
-def explain_recommendation(user_id: int, product_id: int, db: Session):
-    """
-    Provides an explanation for why a product was recommended.
-    """
+def explain_recommendation(user_id: int, product_id: int, db: Session) -> Optional[str]:
+    user = db.query(models.User).filter_by(user_id=user_id).first()
+    product = db.query(models.Product).filter_by(product_id=product_id).first()
+
+    if not product or not user:
+        return None
+
     user_purchases = db.query(models.PurchaseHistory.product_id).filter_by(user_id=user_id).all()
     purchased_product_ids = [p.product_id for p in user_purchases]
 

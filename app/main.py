@@ -1,31 +1,12 @@
-from fastapi import FastAPI, Depends
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
-import os
-from dotenv import load_dotenv
+from fastapi import FastAPI
+from database import models, database
 
-# Load environment variables
-load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/recommendations")
-
-# Database setup
-engine = create_engine(DATABASE_URL, echo=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-def get_db():
-    """Dependency to get the database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(
     title="Recommendation System API", 
-    version="1.0", 
-    description="An advanced recommendation system for an e-commerce platform."
-)
+    version="1.0"
+    )
 
 @app.get("/", summary="Root Endpoint", tags=["Health Check"])
 def read_root():

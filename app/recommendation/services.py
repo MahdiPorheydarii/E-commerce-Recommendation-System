@@ -11,9 +11,20 @@ from typing import List, Optional
 
 CACHE_EXPIRATION = 3600
 
-def get_trending_products(db: Session, limit: int = 5) -> List[int]:
+def get_trending_products(db: Session, user_id: int, limit: int = 5) -> List[int]:
+    """
+    Fetches trending products based on the most purchased items, excluding products the user has interacted with.
+    """
+    # Get products the user has interacted with
+    user_interactions = db.query(models.PurchaseHistory.product_id).filter_by(user_id=user_id).all()
+    user_interactions += db.query(models.BrowsingHistory.product_id).filter_by(user_id=user_id).all()
+    user_interactions += db.query(models.UserInteraction.product_id).filter_by(user_id=user_id).all()
+    interacted_product_ids = {p.product_id for p in user_interactions}
+
+    # Get trending products excluding those the user has interacted with
     trending = (
         db.query(models.PurchaseHistory.product_id)
+        .filter(~models.PurchaseHistory.product_id.in_(interacted_product_ids))
         .group_by(models.PurchaseHistory.product_id)
         .order_by(models.PurchaseHistory.product_id.count().desc())
         .limit(limit)
@@ -26,7 +37,7 @@ def get_user_based_recommendations(user_id: int, db: Session, limit: int = 5) ->
     purchased_product_ids = [p.product_id for p in user_purchases]
 
     if not purchased_product_ids:
-        return get_trending_products(db, limit)  # Cold start fallback
+        return get_trending_products(db, user_id, limit)  # Cold start fallback
 
     # Create user-product interaction matrix
     interactions = db.query(models.PurchaseHistory).all()
@@ -56,7 +67,7 @@ def get_content_based_recommendations(user_id: int, db: Session, limit: int = 5)
     viewed_product_ids = [b.product_id for b in browsing_history]
 
     if not viewed_product_ids:
-        return get_trending_products(db, limit)  # Cold start fallback
+        return get_trending_products(db, user_id, limit)  # Cold start fallback
 
     # Create product feature matrix
     products = db.query(models.Product).all()
@@ -83,7 +94,7 @@ def get_content_based_recommendations(user_id: int, db: Session, limit: int = 5)
 def get_personalized_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     user = db.query(models.User).filter_by(user_id=user_id).first()
     if not user:
-        return get_trending_products(db, limit)  # Cold start fallback
+        return get_trending_products(db, user_id, limit)  # Cold start fallback
 
     # Example: Recommend products based on time of day and device type
     current_hour = datetime.utcnow().hour
@@ -110,7 +121,7 @@ def get_hybrid_recommendations(user_id: int, db: Session, limit: int = 5) -> Lis
 
     final_recommendations = list(set(collaborative + content_based + personalized))[:limit]
     if not final_recommendations:
-        final_recommendations = get_trending_products(db, limit)
+        final_recommendations = get_trending_products(db, user_id, limit)
 
     cache_recommendations(user_id, final_recommendations)
     return final_recommendations

@@ -46,7 +46,7 @@ class UserInteraction(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.product_id"), nullable=False)
-    interaction_type = Column(String, nullable=False)  # e.g., click, view, time_spent
+    interaction_type = Column(String, nullable=False)  # e.g., view, add_to_cart, remove_from_cart
     timestamp = Column(DateTime, default=datetime.utcnow)
     time_spent = Column(Integer, nullable=True)  # Time spent in seconds
     context = Column(String, nullable=True)  # e.g., time_of_day, day_of_week, device_type

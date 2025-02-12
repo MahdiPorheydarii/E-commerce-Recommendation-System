@@ -1,5 +1,9 @@
 from datetime import datetime
+import json
+from typing import Optional, List
+from app.database.database import redis_client
 
+CACHE_EXPIRATION = 3600
 def get_current_season() -> str:
     """
     Determine the current season or special event based on the current date.
@@ -17,3 +21,10 @@ def get_current_season() -> str:
         return "Fall"
     
     return "Unknown"
+
+async def cache_recommendations(user_id: int, recommendations: List[int]) -> None:
+    redis_client.setex(f"recommendations:{user_id}", CACHE_EXPIRATION, json.dumps(recommendations))
+
+async def get_cached_recommendations(user_id: int) -> Optional[List[int]]:
+    cached_data = redis_client.get(f"recommendations:{user_id}")
+    return json.loads(cached_data) if cached_data else None

@@ -1,25 +1,19 @@
 from sqlalchemy.orm import Session
 from app.database import models
-from app.database.database import redis_client, SessionLocal
+from app.database.database import SessionLocal
 from datetime import datetime, timedelta
-import json
+from main import logger
 import pandas as pd
-import asyncio
-import logging
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import svds
 import scipy.sparse as sp
-from utils import get_current_season
+from utils import get_current_season, cache_recommendations, get_cached_recommendations
 from apscheduler.schedulers.background import BackgroundScheduler
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import List, Optional
 import asyncio
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
-
-CACHE_EXPIRATION = 3600  # 1 hour cache expiration
 
 async def get_hybrid_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     """
@@ -328,10 +322,3 @@ def precompute_recommendations(db: Session):
 
 scheduler.add_job(precompute_recommendations, 'interval', hours=6, args=[SessionLocal()])
 scheduler.start()
-
-async def cache_recommendations(user_id: int, recommendations: List[int]) -> None:
-    redis_client.setex(f"recommendations:{user_id}", CACHE_EXPIRATION, json.dumps(recommendations))
-
-async def get_cached_recommendations(user_id: int) -> Optional[List[int]]:
-    cached_data = redis_client.get(f"recommendations:{user_id}")
-    return json.loads(cached_data) if cached_data else None

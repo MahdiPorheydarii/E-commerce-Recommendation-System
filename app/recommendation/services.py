@@ -2,28 +2,32 @@ from sqlalchemy.orm import Session
 from collections import Counter
 from app import models
 from app.database import redis_client
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import pandas as pd
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Optional
 
 CACHE_EXPIRATION = 3600
 
 def get_trending_products(db: Session, user_id: int, limit: int = 5) -> List[int]:
     """
-    Fetches trending products based on the most purchased items, excluding products the user has interacted with.
+    Fetches trending products based on the most purchased items in the last month, excluding products the user has interacted with.
     """
+    one_month_ago = datetime.utcnow() - timedelta(days=30)
+
     # Get products the user has interacted with
     user_interactions = db.query(models.PurchaseHistory.product_id).filter_by(user_id=user_id).all()
     user_interactions += db.query(models.BrowsingHistory.product_id).filter_by(user_id=user_id).all()
     user_interactions += db.query(models.UserInteraction.product_id).filter_by(user_id=user_id).all()
     interacted_product_ids = {p.product_id for p in user_interactions}
 
-    # Get trending products excluding those the user has interacted with
+    # Get trending products in the last month excluding those the user has interacted with
     trending = (
         db.query(models.PurchaseHistory.product_id)
+        .filter(models.PurchaseHistory.timestamp >= one_month_ago)
         .filter(~models.PurchaseHistory.product_id.in_(interacted_product_ids))
         .group_by(models.PurchaseHistory.product_id)
         .order_by(models.PurchaseHistory.product_id.count().desc())
@@ -119,10 +123,31 @@ def get_hybrid_recommendations(user_id: int, db: Session, limit: int = 5) -> Lis
     content_based = get_content_based_recommendations(user_id, db, limit)
     personalized = get_personalized_recommendations(user_id, db, limit)
 
-    final_recommendations = list(set(collaborative + content_based + personalized))[:limit]
-    if not final_recommendations:
-        final_recommendations = get_trending_products(db, user_id, limit)
+    # Combine recommendations and ensure diversity
+    combined_recommendations = list(set(collaborative + content_based + personalized))
+    if len(combined_recommendations) < limit:
+        trending = get_trending_products(db, user_id, limit)
+        combined_recommendations += trending
 
+    # Ensure diversity by checking similarity between tags
+    if len(combined_recommendations) < limit:
+        all_products = db.query(models.Product).all()
+        product_tags = {p.product_id: p.tags for p in all_products}
+        tfidf_vectorizer = TfidfVectorizer()
+        tfidf_matrix = tfidf_vectorizer.fit_transform([product_tags[pid] for pid in product_tags])
+        cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+
+        for pid in product_tags:
+            if pid not in combined_recommendations:
+                similar_products = cosine_sim[pid].argsort()[::-1]
+                for spid in similar_products:
+                    if spid not in combined_recommendations:
+                        combined_recommendations.append(spid)
+                        break
+            if len(combined_recommendations) >= limit:
+                break
+
+    final_recommendations = combined_recommendations[:limit]
     cache_recommendations(user_id, final_recommendations)
     return final_recommendations
 
@@ -157,5 +182,11 @@ def explain_recommendation(user_id: int, product_id: int, db: Session) -> Option
 
     if db.query(models.PurchaseHistory).filter(models.PurchaseHistory.user_id.in_(similar_user_ids), models.PurchaseHistory.product_id == product_id).count() > 0:
         return "Recommended because users similar to you purchased this."
+
+    browsing_history = db.query(models.BrowsingHistory.product_id).filter_by(user_id=user_id).all()
+    viewed_product_ids = [b.product_id for b in browsing_history]
+
+    if product_id in viewed_product_ids:
+        return "Recommended because you have viewed similar products."
 
     return "Recommended based on trending and popular products."

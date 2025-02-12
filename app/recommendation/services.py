@@ -1,7 +1,6 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from database import models
-from database.database import SessionLocal
 from datetime import datetime, timedelta
 from config import logger
 from scipy.sparse.linalg import svds
@@ -25,6 +24,17 @@ async def get_hybrid_recommendations(user_id: Optional[int], db: Session, limit:
         else:
             return await get_trending_products(db, user_id, limit)
 
+        user_exists = db.query(models.User).filter_by(user_id=user_id).first()
+        if not user_exists:
+            raise HTTPException(status_code=404, detail=f"User with user_id={user_id} not found")
+
+        browsing_history = db.query(models.BrowsingHistory).filter_by(user_id=user_id).first()
+        purchase_history = db.query(models.PurchaseHistory).filter_by(user_id=user_id).first()
+
+        if not browsing_history and not purchase_history:
+            logger.info(f"No browsing or purchase history for user_id={user_id}, falling back to trending products")
+            return await get_trending_products(db, user_id, limit)
+
         collaborative, content_based, personalized, contextual, svd = await asyncio.gather(
             get_user_based_recommendations(user_id, db, limit),
             get_content_based_recommendations(user_id, db, limit),
@@ -45,6 +55,8 @@ async def get_hybrid_recommendations(user_id: Optional[int], db: Session, limit:
         logger.info(f"Final recommendations for user_id={user_id}: {final_recommendations}")
         
         return final_recommendations
+    except HTTPException as e:
+        raise e
     except Exception as e:
         logger.error(f"Error fetching hybrid recommendations for user_id={user_id}: {e}")
         raise HTTPException(status_code=500, detail="Error fetching hybrid recommendations")
@@ -291,50 +303,3 @@ async def enforce_diversity(recommendations: List[int], db: Session, limit: int)
     except Exception as e:
         logger.error(f"Error enforcing diversity in recommendations: {e}")
         raise HTTPException(status_code=500, detail="Error enforcing diversity in recommendations")
-
-async def explain_recommendation(user_id: Optional[int], product_id: int, db: Session) -> Optional[str]:
-    """
-    Provide an explanation for why a product was recommended.
-    """
-    try:
-        logger.info(f"Explaining recommendation for user_id={user_id}, product_id={product_id}")
-        user = db.query(models.User).filter_by(user_id=user_id).first() if user_id else None
-        product = db.query(models.Product).filter_by(product_id=product_id).first()
-
-        if not product or (user_id and not user):
-            logger.info(f"No data found for user_id={user_id} or product_id={product_id}")
-            return None
-
-        if user_id:
-            user_purchases = db.query(models.PurchaseHistory.product_id).filter_by(user_id=user_id).all()
-            purchased_product_ids = [p.product_id for p in user_purchases]
-
-            if product_id in purchased_product_ids:
-                logger.info(f"Product_id={product_id} recommended because user_id={user_id} has shown interest in similar products")
-                return "Recommended because you have shown interest in similar products."
-
-            similar_users = (
-                db.query(models.PurchaseHistory.user_id)
-                .filter(models.PurchaseHistory.product_id.in_(purchased_product_ids))
-                .distinct()
-                .all()
-            )
-
-            similar_user_ids = [u.user_id for u in similar_users if u.user_id != user_id]
-
-            if db.query(models.PurchaseHistory).filter(models.PurchaseHistory.user_id.in_(similar_user_ids), models.PurchaseHistory.product_id == product_id).count() > 0:
-                logger.info(f"Product_id={product_id} recommended because users similar to user_id={user_id} purchased this")
-                return "Recommended because users similar to you purchased this."
-
-            browsing_history = db.query(models.BrowsingHistory.product_id).filter_by(user_id=user_id).all()
-            viewed_product_ids = [b.product_id for b in browsing_history]
-
-            if product_id in viewed_product_ids:
-                logger.info(f"Product_id={product_id} recommended because user_id={user_id} has viewed similar products")
-                return "Recommended because you have viewed similar products."
-
-        logger.info(f"Product_id={product_id} recommended based on trending and popular products for user_id={user_id}")
-        return "Recommended based on trending and popular products."
-    except Exception as e:
-        logger.error(f"Error explaining recommendation for user_id={user_id}, product_id={product_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error explaining recommendation")

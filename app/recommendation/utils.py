@@ -1,10 +1,82 @@
 from datetime import datetime
 import json
+from fastapi import HTTPException
 from typing import Optional, List
 from database.database import redis_client
+from sqlalchemy.orm import Session
+from database import models
+from config import logger
 
 CACHE_EXPIRATION = 3600
 from datetime import datetime
+
+async def explain_recommendation(user_id: Optional[int], product_id: int, db: Session) -> Optional[str]:
+    try:
+        logger.info(f"Explaining recommendation for user_id={user_id}, product_id={product_id}")
+        user = db.query(models.User).filter_by(user_id=user_id).first() if user_id else None
+        product = db.query(models.Product).filter_by(product_id=product_id).first()
+
+        if not product or (user_id and not user):
+            logger.info(f"No data found for user_id={user_id} or product_id={product_id}")
+            return None
+
+        explanation_parts = []
+
+        if user_id:
+            user_purchases = db.query(models.PurchaseHistory.product_id).filter_by(user_id=user_id).all()
+            purchased_product_ids = [p.product_id for p in user_purchases]
+
+            if product_id in purchased_product_ids:
+                explanation_parts.append("Recommended because you have shown interest in similar products.")
+
+            similar_users = (
+                db.query(models.PurchaseHistory.user_id)
+                .filter(models.PurchaseHistory.product_id.in_(purchased_product_ids))
+                .distinct()
+                .all()
+            )
+
+            similar_user_ids = [u.user_id for u in similar_users if u.user_id != user_id]
+
+            similar_users_purchased = (
+                db.query(models.PurchaseHistory.user_id)
+                .filter(models.PurchaseHistory.user_id.in_(similar_user_ids), models.PurchaseHistory.product_id == product_id)
+                .distinct()
+                .all()
+            )
+
+            if similar_users_purchased:
+                similar_users_names = [db.query(models.User.name).filter_by(user_id=u.user_id).first()[0] for u in similar_users_purchased]
+                explanation_parts.append(f"Recommended because users similar to you ({', '.join(similar_users_names)}) purchased this.")
+
+            browsing_history = db.query(models.BrowsingHistory.product_id).filter_by(user_id=user_id).all()
+            viewed_product_ids = [b.product_id for b in browsing_history]
+
+            if product_id in viewed_product_ids:
+                explanation_parts.append("Recommended because you have viewed similar products.")
+
+        current_day = datetime.utcnow().strftime('%A')
+        current_season = get_current_season()
+
+        contextual_signals = db.query(models.ContextualSignal).all()
+        relevant_signals = [
+            signal for signal in contextual_signals
+            if current_day in signal.peak_days.split(',') or signal.season == current_season
+        ]
+
+        if relevant_signals:
+            relevant_categories = [signal.category for signal in relevant_signals]
+            if product.category in relevant_categories:
+                explanation_parts.append(f"Recommended based on current trends: {current_day} and {current_season}.")
+
+        if not explanation_parts:
+            explanation_parts.append("Recommended based on trending and popular products.")
+
+        logger.info(f"Explanation for user_id={user_id}, product_id={product_id}: {explanation_parts}")
+        return " ".join(explanation_parts)
+    except Exception as e:
+        logger.error(f"Error explaining recommendation for user_id={user_id}, product_id={product_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error explaining recommendation")
 
 def get_current_season() -> str:
     """

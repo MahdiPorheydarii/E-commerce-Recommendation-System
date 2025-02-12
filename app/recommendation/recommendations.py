@@ -4,12 +4,12 @@ from database import database, models
 from .services import get_hybrid_recommendations, explain_recommendation
 from database.models import Product
 from .schemas import ProductResponse
-from typing import List
+from typing import List, Optional
 
 router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
 
 @router.get("/{user_id}", response_model=List[ProductResponse], summary="Get Recommendations", description="Get top recommended products for a user using a hybrid approach with caching.", responses={200: {"description": "Successful Response"}, 404: {"description": "User not found"}})
-async def get_recommendations(user_id: int, db: Session = Depends(database.get_db)):
+async def get_recommendations(user_id: Optional[int] = None, db: Session = Depends(database.get_db)):
     """
     Get top recommended products for a user using a hybrid approach with caching.
     """

@@ -51,15 +51,19 @@ async def get_interacted_product_ids(user_id: int, db: Session) -> set:
     """
     Get the set of product IDs the user has interacted with.
     """
+    logger.info(f"Fetching interacted product IDs for user_id={user_id}")
     user_interactions = db.query(models.PurchaseHistory.product_id).filter_by(user_id=user_id).all()
     user_interactions += db.query(models.BrowsingHistory.product_id).filter_by(user_id=user_id).all()
     user_interactions += db.query(models.UserInteraction.product_id).filter_by(user_id=user_id).all()
-    return {p.product_id for p in user_interactions}
+    interacted_product_ids = {p.product_id for p in user_interactions}
+    logger.info(f"Interacted product IDs for user_id={user_id}: {interacted_product_ids}")
+    return interacted_product_ids
 
 async def get_trending_products(db: Session, user_id: int, limit: int = 5) -> List[int]:
     """
     Fetches trending products based on the most purchased items in the last month, excluding products the user has interacted with.
     """
+    logger.info(f"Fetching trending products for user_id={user_id}")
     one_month_ago = datetime.utcnow() - timedelta(days=30)
     interacted_product_ids = await get_interacted_product_ids(user_id, db)
 
@@ -72,16 +76,20 @@ async def get_trending_products(db: Session, user_id: int, limit: int = 5) -> Li
         .limit(limit)
         .all()
     )
-    return [p.product_id for p in trending]
+    trending_product_ids = [p.product_id for p in trending]
+    logger.info(f"Trending products for user_id={user_id}: {trending_product_ids}")
+    return trending_product_ids
 
 async def get_user_based_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     """
     Get user-based collaborative filtering recommendations.
     """
+    logger.info(f"Fetching user-based recommendations for user_id={user_id}")
     user_purchases = db.query(models.PurchaseHistory).filter_by(user_id=user_id).all()
     purchased_product_ids = [p.product_id for p in user_purchases]
 
     if not purchased_product_ids:
+        logger.info(f"No purchase history for user_id={user_id}, falling back to trending products")
         return await get_trending_products(db, user_id, limit)  # Cold start fallback
 
     interactions = db.query(models.PurchaseHistory).all()
@@ -100,16 +108,19 @@ async def get_user_based_recommendations(user_id: int, db: Session, limit: int =
     similar_users_purchases = df[df['user_id'].isin(similar_users)]
     recommended_products = similar_users_purchases['product_id'].value_counts().index.tolist()
 
+    logger.info(f"User-based recommendations for user_id={user_id}: {recommended_products[:limit]}")
     return recommended_products[:limit]
 
 async def get_content_based_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     """
     Get content-based filtering recommendations.
     """
+    logger.info(f"Fetching content-based recommendations for user_id={user_id}")
     browsing_history = db.query(models.BrowsingHistory).filter_by(user_id=user_id).all()
     viewed_product_ids = [b.product_id for b in browsing_history]
 
     if not viewed_product_ids:
+        logger.info(f"No browsing history for user_id={user_id}, falling back to trending products")
         return await get_trending_products(db, user_id, limit)  # Cold start fallback
 
     products = db.query(models.Product).all()
@@ -129,14 +140,17 @@ async def get_content_based_recommendations(user_id: int, db: Session, limit: in
 
     similar_products = product_similarity_df.loc[viewed_product_ids].mean().sort_values(ascending=False).index.tolist()
 
+    logger.info(f"Content-based recommendations for user_id={user_id}: {similar_products[:limit]}")
     return similar_products[:limit]
 
 async def get_personalized_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     """
     Get personalized recommendations based on user-specific data.
     """
+    logger.info(f"Fetching personalized recommendations for user_id={user_id}")
     user = db.query(models.User).filter_by(user_id=user_id).first()
     if not user:
+        logger.info(f"No user data for user_id={user_id}, falling back to trending products")
         return await get_trending_products(db, user_id, limit)  # Cold start fallback
 
     current_hour = datetime.utcnow().hour
@@ -150,14 +164,18 @@ async def get_personalized_recommendations(user_id: int, db: Session, limit: int
         .all()
     )
 
-    return [p.product_id for p in personalized_products]
+    personalized_product_ids = [p.product_id for p in personalized_products]
+    logger.info(f"Personalized recommendations for user_id={user_id}: {personalized_product_ids}")
+    return personalized_product_ids
 
 async def get_contextual_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
     """
     Get recommendations based on contextual signals, now including time of day and device type.
     """
+    logger.info(f"Fetching contextual recommendations for user_id={user_id}")
     user = db.query(models.User).filter_by(user_id=user_id).first()
     if not user:
+        logger.info(f"No user data for user_id={user_id}, falling back to trending products")
         return await get_trending_products(db, user_id, limit)  # Cold start fallback
 
     current_day = datetime.utcnow().strftime('%A')
@@ -178,6 +196,7 @@ async def get_contextual_recommendations(user_id: int, db: Session, limit: int =
     ]
 
     if not relevant_signals:
+        logger.info(f"No relevant contextual signals for user_id={user_id}, falling back to trending products")
         return await get_trending_products(db, user_id, limit)  # Fallback if no relevant signals
 
     relevant_categories = [signal.category for signal in relevant_signals]
@@ -188,22 +207,27 @@ async def get_contextual_recommendations(user_id: int, db: Session, limit: int =
         .all()
     )
 
-    return [p.product_id for p in contextual_products]
+    contextual_product_ids = [p.product_id for p in contextual_products]
+    logger.info(f"Contextual recommendations for user_id={user_id}: {contextual_product_ids}")
+    return contextual_product_ids
 
 async def explain_recommendation(user_id: int, product_id: int, db: Session) -> Optional[str]:
     """
     Provide an explanation for why a product was recommended.
     """
+    logger.info(f"Explaining recommendation for user_id={user_id}, product_id={product_id}")
     user = db.query(models.User).filter_by(user_id=user_id).first()
     product = db.query(models.Product).filter_by(product_id=product_id).first()
 
     if not product or not user:
+        logger.info(f"No data found for user_id={user_id} or product_id={product_id}")
         return None
 
     user_purchases = db.query(models.PurchaseHistory.product_id).filter_by(user_id=user_id).all()
     purchased_product_ids = [p.product_id for p in user_purchases]
 
     if product_id in purchased_product_ids:
+        logger.info(f"Product_id={product_id} recommended because user_id={user_id} has shown interest in similar products")
         return "Recommended because you have shown interest in similar products."
 
     similar_users = (
@@ -216,14 +240,17 @@ async def explain_recommendation(user_id: int, product_id: int, db: Session) -> 
     similar_user_ids = [u.user_id for u in similar_users if u.user_id != user_id]
 
     if db.query(models.PurchaseHistory).filter(models.PurchaseHistory.user_id.in_(similar_user_ids), models.PurchaseHistory.product_id == product_id).count() > 0:
+        logger.info(f"Product_id={product_id} recommended because users similar to user_id={user_id} purchased this")
         return "Recommended because users similar to you purchased this."
 
     browsing_history = db.query(models.BrowsingHistory.product_id).filter_by(user_id=user_id).all()
     viewed_product_ids = [b.product_id for b in browsing_history]
 
     if product_id in viewed_product_ids:
+        logger.info(f"Product_id={product_id} recommended because user_id={user_id} has viewed similar products")
         return "Recommended because you have viewed similar products."
 
+    logger.info(f"Product_id={product_id} recommended based on trending and popular products for user_id={user_id}")
     return "Recommended based on trending and popular products."
 
 async def get_svd_recommendations(user_id: int, db: Session, limit: int = 5) -> List[int]:
@@ -302,23 +329,3 @@ async def enforce_diversity(recommendations: List[int], db: Session, limit: int)
 
     logger.info(f"Final diversified recommendations: {final_recommendations}")
     return final_recommendations
-
-scheduler = BackgroundScheduler()
-
-def precompute_recommendations(db: Session):
-    """
-    Runs a batch job to precompute recommendations for all active users.
-    """
-    logger.info("Starting batch recommendation computation...")
-    
-    users = db.query(models.User.user_id).all()
-    user_ids = [u.user_id for u in users]
-
-    for user_id in user_ids:
-        recommendations = asyncio.run(get_hybrid_recommendations(user_id, db, limit=10))
-        cache_recommendations(user_id, recommendations)
-
-    logger.info("Batch recommendation computation complete.")
-
-scheduler.add_job(precompute_recommendations, 'interval', hours=6, args=[SessionLocal()])
-scheduler.start()

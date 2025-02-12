@@ -9,10 +9,9 @@ from app.recommendation.services import (
     get_content_based_recommendations,
     get_personalized_recommendations,
     get_contextual_recommendations,
-    get_svd_recommendations,
-    explain_recommendation
-)
-from app.recommendation.utils import cache_recommendations, get_cached_recommendations
+    get_svd_recommendations
+    )
+from app.recommendation.utils import cache_recommendations, get_cached_recommendations, explain_recommendation
 import asyncio
 
 DATABASE_URL = "sqlite:///./test.db"

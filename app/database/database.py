@@ -3,7 +3,6 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 import redis
 from ..config import REDIS_URL, POSTGRES_URL
 
-print(100*"*", POSTGRES_URL)
 redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
 engine = create_engine(POSTGRES_URL, echo=True)

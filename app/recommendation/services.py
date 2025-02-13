@@ -273,7 +273,7 @@ async def get_svd_recommendations(user_id: Optional[int], db: Session, limit: in
         sparse_matrix = sp.csr_matrix((values, (rows, cols)), shape=(len(unique_users), len(unique_products)))
 
         # Apply SVD (Singular Value Decomposition)
-        U, sigma, Vt = svds(sparse_matrix, k=min(50, min(sparse_matrix.shape) - 1))
+        U, sigma, Vt = svds(sparse_matrix, k=min(10, min(sparse_matrix.shape) - 1))
         sigma = np.diag(sigma)
 
         if user_id not in user_map:

@@ -112,4 +112,10 @@ async def cache_recommendations(user_id: int, recommendations: List[int]) -> Non
 
 async def get_cached_recommendations(user_id: int) -> Optional[List[int]]:
     cached_data = redis_client.get(f"recommendations:{user_id}")
-    return json.loads(cached_data) if cached_data else None
+    if cached_data:
+        logger.info(f"Cache hit for user_id={user_id}")
+        return json.loads(cached_data)
+    
+    logger.info(f"Cache miss for user_id={user_id}, fetching from database...")
+    return []
+

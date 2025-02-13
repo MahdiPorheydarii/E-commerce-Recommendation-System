@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from fastapi import HTTPException
 from ..database import models
 from datetime import datetime, timedelta
@@ -19,7 +20,6 @@ async def get_hybrid_recommendations(user_id: Optional[int], db: Session, limit:
         if user_id is not None:
             cached_recommendations = await get_cached_recommendations(user_id)
             if cached_recommendations:
-                logger.info(f"Cache hit for user_id={user_id}")
                 return cached_recommendations
         else:
             return await get_trending_products(db, user_id, limit)
@@ -82,15 +82,17 @@ async def get_trending_products(db: Session, user_id: Optional[int], limit: int 
         one_month_ago = datetime.utcnow() - timedelta(days=30)
         interacted_product_ids = await get_interacted_product_ids(user_id, db)
 
+
         trending = (
-            db.query(models.PurchaseHistory.product_id)
+            db.query(models.PurchaseHistory.product_id, func.count(models.PurchaseHistory.product_id).label("purchase_count"))
             .filter(models.PurchaseHistory.timestamp >= one_month_ago)
-            .filter(~models.PurchaseHistory.product_id.in_(interacted_product_ids))
+            .filter(~models.PurchaseHistory.product_id.in_(list(interacted_product_ids)))  # Ensure list conversion for PostgreSQL
             .group_by(models.PurchaseHistory.product_id)
-            .order_by(models.PurchaseHistory.product_id.count().desc())
+            .order_by(func.count(models.PurchaseHistory.product_id).desc())
             .limit(limit)
             .all()
         )
+
         trending_product_ids = [p.product_id for p in trending]
         logger.info(f"Trending products for user_id={user_id}: {trending_product_ids}")
         return trending_product_ids
@@ -155,7 +157,19 @@ async def get_content_based_recommendations(user_id: Optional[int], db: Session,
         product_similarity = cosine_similarity(product_features_matrix)
         product_similarity_df = pd.DataFrame(product_similarity, index=product_features_matrix.index, columns=product_features_matrix.index)
 
-        similar_products = product_similarity_df.loc[viewed_product_ids].mean().sort_values(ascending=False).index.tolist()
+        if not viewed_product_ids:
+            logger.info(f"No browsing history for user_id={user_id}, falling back to trending products")
+            return await get_trending_products(db, user_id, limit)  # Cold start fallback
+
+        # Ensure viewed_product_ids exist in product_similarity_df index
+        valid_product_ids = [pid for pid in viewed_product_ids if pid in product_similarity_df.index]
+
+        if not valid_product_ids:  
+            logger.info(f"Viewed products not found in dataset for user_id={user_id}, returning trending products")
+            return await get_trending_products(db, user_id, limit)
+
+        similar_products = product_similarity_df.loc[valid_product_ids].mean().sort_values(ascending=False).index.tolist()
+
 
         logger.info(f"Content-based recommendations for user_id={user_id}: {similar_products[:limit]}")
         return similar_products[:limit]
@@ -173,15 +187,17 @@ async def get_personalized_recommendations(user_id: Optional[int], db: Session, 
 
         personalized_products = (
             db.query(models.Product.product_id)
-            .filter(models.Product.metadata.contains(f'"device_type": "{device_type}"'))
-            .filter(models.Product.metadata.contains(f'"active_hours": "{current_hour}"'))
-            .limit(limit)
+            .filter(models.Product.meta.contains(f'"device_type": "{device_type}"'))
+            .limit(limit * 2)  # Increase limit in case filtering reduces options
             .all()
         )
 
-        personalized_product_ids = [p.product_id for p in personalized_products]
-        logger.info(f"Personalized recommendations for user_id={user_id}: {personalized_product_ids}")
-        return personalized_product_ids
+        if not personalized_products:
+            logger.info(f"No personalized matches for user_id={user_id}, returning trending products")
+            return await get_trending_products(db, user_id, limit)
+
+        return [p.product_id for p in personalized_products[:limit]]
+
     except Exception as e:
         logger.error(f"Error fetching personalized recommendations for user_id={user_id}: {e}")
         raise HTTPException(status_code=500, detail="Error fetching personalized recommendations")
@@ -260,19 +276,28 @@ async def get_svd_recommendations(user_id: Optional[int], db: Session, limit: in
         U, sigma, Vt = svds(sparse_matrix, k=min(50, min(sparse_matrix.shape) - 1))
         sigma = np.diag(sigma)
 
-        # Compute user recommendations
-        user_idx = user_map.get(user_id)
-        if user_idx is None:
-            logger.warning(f"user_id={user_id} not found in SVD model, falling back to trending products")
-            return await get_trending_products(db, user_id, limit)  # Cold start fallback
+        if user_id not in user_map:
+            logger.warning(f"user_id={user_id} not found in training data, falling back to trending products")
+            return await get_trending_products(db, user_id, limit)
 
+        user_idx = user_map[user_id]
         user_ratings = np.dot(np.dot(U[user_idx, :], sigma), Vt)
-        recommended_idx = np.argsort(-user_ratings)[:limit]  # Sort and take top N
 
-        recommended_product_ids = [product_inv_map[i] for i in recommended_idx if i in product_inv_map]
+        # Convert to a NumPy array and replace NaN with 0
+        user_ratings = np.nan_to_num(user_ratings)
 
-        logger.info(f"SVD recommendations for user_id={user_id}: {recommended_product_ids}")
+        recommended_idx = np.argsort(-user_ratings)[:limit]
+
+        # Ensure recommended indexes exist in the product map
+        recommended_product_ids = [
+            int(product_inv_map[i]) for i in recommended_idx if i in product_inv_map and isinstance(product_inv_map[i], int)
+        ]
+        if not recommended_product_ids:
+            logger.warning(f"SVD produced empty recommendations for user_id={user_id}, falling back to trending products")
+            return await get_trending_products(db, user_id, limit)
+
         return recommended_product_ids
+
     except Exception as e:
         logger.error(f"Error computing SVD recommendations for user_id={user_id}: {e}")
         raise HTTPException(status_code=500, detail="Error computing SVD recommendations")

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..database import models
 from ..config import logger
 
-CACHE_EXPIRATION = 3600
+CACHE_EXPIRATION = 21600
 from datetime import datetime
 
 async def explain_recommendation(user_id: Optional[int], product_id: int, db: Session) -> Optional[str]:

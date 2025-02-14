@@ -90,10 +90,10 @@ def setup_data(db):
 
 def test_get_hybrid_recommendations(db, setup_data):
     """Ensures hybrid recommendations return valid, diverse results."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 1
     recommendations = asyncio.run(get_hybrid_recommendations(user_id, db, limit=5))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_get_hybrid_recommendations took {end_time - start_time:.4f} seconds")
 
     assert isinstance(recommendations, list)
@@ -103,9 +103,9 @@ def test_get_hybrid_recommendations(db, setup_data):
 
 def test_get_hybrid_recommendations_no_user(db, setup_data):
     """Handles case where user ID is None."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     recommendations = asyncio.run(get_hybrid_recommendations(None, db, limit=5))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_get_hybrid_recommendations_no_user took {end_time - start_time:.4f} seconds")
 
     assert isinstance(recommendations, list)
@@ -113,10 +113,10 @@ def test_get_hybrid_recommendations_no_user(db, setup_data):
 
 def test_get_user_based_recommendations(db, setup_data):
     """Ensures user-based filtering recommends items that similar users have purchased."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 1
     recommendations = asyncio.run(get_user_based_recommendations(user_id, db, limit=5))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_get_user_based_recommendations took {end_time - start_time:.4f} seconds")
 
     assert isinstance(recommendations, list)
@@ -125,10 +125,10 @@ def test_get_user_based_recommendations(db, setup_data):
 
 def test_get_user_based_recommendations_no_history(db, setup_data):
     """Handles cases where a user has no purchase history."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 9999  # Assuming this user exists but has no purchase history
     recommendations = asyncio.run(get_user_based_recommendations(user_id, db, limit=5))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_get_user_based_recommendations_no_history took {end_time - start_time:.4f} seconds")
 
     assert isinstance(recommendations, list)
@@ -136,10 +136,10 @@ def test_get_user_based_recommendations_no_history(db, setup_data):
 
 def test_get_content_based_recommendations(db, setup_data):
     """Ensures content-based filtering recommends similar products based on browsing history."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 1
     recommendations = asyncio.run(get_content_based_recommendations(user_id, db, limit=5))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_get_content_based_recommendations took {end_time - start_time:.4f} seconds")
 
     assert isinstance(recommendations, list)
@@ -147,10 +147,10 @@ def test_get_content_based_recommendations(db, setup_data):
 
 def test_get_content_based_recommendations_no_history(db, setup_data):
     """Handles cases where a user has never browsed any product."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 9999  # Assuming this user has no browsing history
     recommendations = asyncio.run(get_content_based_recommendations(user_id, db, limit=5))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_get_content_based_recommendations_no_history took {end_time - start_time:.4f} seconds")
 
     assert isinstance(recommendations, list)
@@ -158,10 +158,10 @@ def test_get_content_based_recommendations_no_history(db, setup_data):
 
 def test_get_personalized_recommendations(db, setup_data):
     """Ensures personalized recommendations consider device type & time of day."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 1
     recommendations = asyncio.run(get_personalized_recommendations(user_id, db, limit=5))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_get_personalized_recommendations took {end_time - start_time:.4f} seconds")
 
     assert isinstance(recommendations, list)
@@ -169,10 +169,10 @@ def test_get_personalized_recommendations(db, setup_data):
 
 def test_get_contextual_recommendations(db, setup_data):
     """Ensures recommendations match contextual signals like time-of-day trends."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 1
     recommendations = asyncio.run(get_contextual_recommendations(user_id, db, limit=5))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_get_contextual_recommendations took {end_time - start_time:.4f} seconds")
 
     assert isinstance(recommendations, list)
@@ -180,10 +180,10 @@ def test_get_contextual_recommendations(db, setup_data):
 
 def test_get_svd_recommendations(db, setup_data):
     """Ensures SVD-based recommendations provide a valid ranked list of items."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 1
     recommendations = asyncio.run(get_svd_recommendations(user_id, db, limit=5))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_get_svd_recommendations took {end_time - start_time:.4f} seconds")
 
     assert isinstance(recommendations, list)
@@ -192,45 +192,45 @@ def test_get_svd_recommendations(db, setup_data):
 
 def test_explain_recommendation(db, setup_data):
     """Checks if recommendation explanations provide valid reasons."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 1
     product_id = 1
     explanation = asyncio.run(explain_recommendation(user_id, product_id, db))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_explain_recommendation took {end_time - start_time:.4f} seconds")
 
     assert isinstance(explanation, str) or explanation is None
 
 def test_explain_recommendation_no_user(db, setup_data):
     """Ensures explanation handles missing user cases."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     product_id = 1
     explanation = asyncio.run(explain_recommendation(None, product_id, db))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_explain_recommendation_no_user took {end_time - start_time:.4f} seconds")
 
     assert isinstance(explanation, str) or explanation is None
 
 def test_cache_recommendations(db, setup_data):
     """Verifies that recommendations are stored and retrieved correctly from cache."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 1
     recommendations = [1, 2, 3, 4, 5]
     
     asyncio.run(cache_recommendations(user_id, recommendations))
     cached_recommendations = asyncio.run(get_cached_recommendations(user_id))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_cache_recommendations took {end_time - start_time:.4f} seconds")
 
     assert cached_recommendations == recommendations
 
 def test_explain_recommendation_no_data(db, setup_data):
     """Ensures explanation function returns None for unknown users/products."""
-    start_time = time.time()  # Start timing
+    start_time = time.time()
     user_id = 99999  # Non-existent user
     product_id = 99999  # Non-existent product
     explanation = asyncio.run(explain_recommendation(user_id, product_id, db))
-    end_time = time.time()  # End timing
+    end_time = time.time()
     print(f"test_explain_recommendation_no_data took {end_time - start_time:.4f} seconds")
 
     assert explanation is None

@@ -9,7 +9,10 @@ from typing import List, Optional
 
 router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
 
-@router.get("/{user_id}", response_model=List[ProductResponse], summary="Get Recommendations", description="Get top recommended products for a user using a hybrid approach with caching.", responses={200: {"description": "Successful Response"}, 404: {"description": "User not found"}})
+@router.get("/{user_id}", response_model=List[ProductResponse], summary="Get Recommendations",
+            description="Get top recommended products for a user using a hybrid approach with caching.",
+            responses={200: {"description": "Successful Response"}, 404: {"description": "User not found"}}
+            )
 async def get_recommendations(user_id: Optional[int] = None, db: Session = Depends(database.get_db)):
     """
     Get top recommended products for a user using a hybrid approach with caching.
@@ -20,7 +23,10 @@ async def get_recommendations(user_id: Optional[int] = None, db: Session = Depen
     recommended_products = db.query(Product).filter(Product.product_id.in_(recommended_product_ids)).all()
     return recommended_products
 
-@router.get("/{user_id}/explain/{product_id}", response_model=str, summary="Explain Recommendation", description="Get an explanation for why a product was recommended.", responses={200: {"description": "Successful Response"}, 404: {"description": "User or Product not found"}})
+@router.get("/{user_id}/explain/{product_id}", response_model=str, summary="Explain Recommendation",
+            description="Get an explanation for why a product was recommended.",
+            responses={200: {"description": "Successful Response"}, 404: {"description": "User or Product not found"}}
+            )
 async def get_recommendation_explanation(user_id: int, product_id: int, db: Session = Depends(database.get_db)):
     """
     Get an explanation for why a product was recommended.

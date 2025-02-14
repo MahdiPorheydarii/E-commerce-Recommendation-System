@@ -34,7 +34,7 @@ def setup_data(db):
     Inserts large-scale mock data into the test database for realistic API load testing.
     Ensures proper insertion order to prevent ForeignKeyViolation errors in PostgreSQL.
     """
-    # Step 1: Insert Users
+    # Users
     users = [
         models.User(user_id=i, name=f"User{i}", location=f"Location{i%50}", device=["Mobile", "Desktop", "Tablet"][i % 3])
         for i in range(1, 1001)
@@ -42,7 +42,7 @@ def setup_data(db):
     db.bulk_save_objects(users)
     db.commit()
 
-    # Step 2: Insert Products
+    # Products
     categories = ["Electronics", "Clothing", "Home & Kitchen", "Books", "Sports", "Toys", "Beauty", "Gaming", "Automotive"]
     products = [
         models.Product(product_id=i, name=f"Product {i}", category=categories[i % len(categories)], tags="tag1 tag2", rating=round((3.0 + (i % 5) * 0.5), 1))
@@ -51,7 +51,7 @@ def setup_data(db):
     db.bulk_save_objects(products)
     db.commit()
 
-    # Step 3: Insert Browsing History (AFTER Users & Products)
+    # Browsing History
     browsing_history = [
         models.BrowsingHistory(user_id=(i % 1000) + 1, product_id=(i % 5000) + 1, timestamp=datetime.utcnow() - timedelta(days=i % 365))
         for i in range(1, 50001)
@@ -59,7 +59,7 @@ def setup_data(db):
     db.bulk_save_objects(browsing_history)
     db.commit()
 
-    # Step 4: Insert Purchase History
+    # Purchase History
     purchase_history = [
         models.PurchaseHistory(user_id=(i % 1000) + 1, product_id=(i % 5000) + 1, quantity=(i % 5) + 1, timestamp=datetime.utcnow() - timedelta(days=i % 180))
         for i in range(1, 20001)
@@ -67,7 +67,7 @@ def setup_data(db):
     db.bulk_save_objects(purchase_history)
     db.commit()
 
-    # Step 5: Insert User Interactions
+    # User Interactions
     interaction_types = ["view", "add_to_cart", "remove_from_cart"]
     user_interactions = [
         models.UserInteraction(user_id=(i % 1000) + 1, product_id=(i % 5000) + 1, interaction_type=interaction_types[i % 3], timestamp=datetime.utcnow() - timedelta(days=i % 90), time_spent=(i % 300) + 10, context=["weekday", "weekend", "morning", "evening"][i % 4])
@@ -76,7 +76,7 @@ def setup_data(db):
     db.bulk_save_objects(user_interactions)
     db.commit()
 
-    # Step 6: Insert Contextual Signals
+    # Signals
     contextual_signals = [
         models.ContextualSignal(category="Electronics", peak_days="Monday,Wednesday,Friday", season="Winter", time_of_day="Morning", device_type="Mobile"),
         models.ContextualSignal(category="Clothing", peak_days="Saturday,Sunday", season="Summer", time_of_day="Evening", device_type="Desktop"),

@@ -188,7 +188,7 @@ async def get_personalized_recommendations(user_id: Optional[int], db: Session, 
         personalized_products = (
             db.query(models.Product.product_id)
             .filter(models.Product.meta.contains(f'"device_type": "{device_type}"'))
-            .limit(limit * 2)  # Increase limit in case filtering reduces options
+            .limit(limit * 2)
             .all()
         )
 

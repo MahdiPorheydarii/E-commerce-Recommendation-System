@@ -11,7 +11,9 @@ router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
 
 @router.get("/{user_id}", response_model=List[ProductResponse], summary="Get Recommendations",
             description="Get top recommended products for a user using a hybrid approach with caching.",
-            responses={200: {"description": "Successful Response"}, 404: {"description": "User not found"}}
+            responses={200: {"description": "Successful Response"},
+                       404: {"description": "User not found or no recommendations available"}
+                       }
             )
 async def get_recommendations(user_id: Optional[int] = None, db: Session = Depends(database.get_db)):
     """
@@ -25,7 +27,9 @@ async def get_recommendations(user_id: Optional[int] = None, db: Session = Depen
 
 @router.get("/{user_id}/explain/{product_id}", response_model=str, summary="Explain Recommendation",
             description="Get an explanation for why a product was recommended.",
-            responses={200: {"description": "Successful Response"}, 404: {"description": "User or Product not found"}}
+            responses={200: {"description": "Successful Response"},
+                       404: {"description": "User or Product not found"}
+                       }
             )
 async def get_recommendation_explanation(user_id: int, product_id: int, db: Session = Depends(database.get_db)):
     """

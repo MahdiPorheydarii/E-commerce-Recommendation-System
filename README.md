@@ -28,9 +28,11 @@ cd E-commerce-Recommendation-System
 ### **2 Environment Variables**
 Create a `.env` file in the root directory with the following:
 ```
-POSTGRES_USER=your_user
-POSTGRES_PASSWORD=your_password
-POSTGRES_DB=your_database
+POSTGRES_USER=user
+POSTGRES_PASSWORD=pw
+POSTGRES_DB=db
+
+REDIS_PASSWORD=pass
 ```
 
 ### **3 Running with Docker Compose**
@@ -89,7 +91,7 @@ The recommendation system uses a **hybrid approach**, combining multiple techniq
 
 ## **API Endpoints**
 
-### **1 Get Recommendations for a User**
+### **1. Get Recommendations for a User**
 **Request:**
 ```sh
 GET /recommendations/{user_id}?limit={limit}
@@ -106,7 +108,7 @@ GET /recommendations/{user_id}?limit={limit}
 }
 ```
 
-### **2 Explain a Recommendation**
+### **2. Explain a Recommendation**
 **Request:**
 ```sh
 GET /recommendations/{user_id}/explain/{product_id}

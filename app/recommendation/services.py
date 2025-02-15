@@ -86,7 +86,7 @@ async def get_trending_products(db: Session, user_id: Optional[int], limit: int 
         trending = (
             db.query(models.PurchaseHistory.product_id, func.count(models.PurchaseHistory.product_id).label("purchase_count"))
             .filter(models.PurchaseHistory.timestamp >= one_month_ago)
-            .filter(~models.PurchaseHistory.product_id.in_(list(interacted_product_ids)))  # Ensure list conversion for PostgreSQL
+            .filter(~models.PurchaseHistory.product_id.in_(list(interacted_product_ids)))
             .group_by(models.PurchaseHistory.product_id)
             .order_by(func.count(models.PurchaseHistory.product_id).desc())
             .limit(limit)
@@ -108,7 +108,7 @@ async def get_user_based_recommendations(user_id: Optional[int], db: Session, li
 
         if not purchased_product_ids:
             logger.info(f"No purchase history for user_id={user_id}, falling back to trending products")
-            return await get_trending_products(db, user_id, limit)  # Cold start fallback
+            return await get_trending_products(db, user_id, limit)
 
         interactions = db.query(models.PurchaseHistory).all()
         data = {
@@ -159,9 +159,8 @@ async def get_content_based_recommendations(user_id: Optional[int], db: Session,
 
         if not viewed_product_ids:
             logger.info(f"No browsing history for user_id={user_id}, falling back to trending products")
-            return await get_trending_products(db, user_id, limit)  # Cold start fallback
+            return await get_trending_products(db, user_id, limit)
 
-        # Ensure viewed_product_ids exist in product_similarity_df index
         valid_product_ids = [pid for pid in viewed_product_ids if pid in product_similarity_df.index]
 
         if not valid_product_ids:  
@@ -182,7 +181,6 @@ async def get_personalized_recommendations(user_id: Optional[int], db: Session, 
         logger.info(f"Fetching personalized recommendations for user_id={user_id}")
         user = db.query(models.User).filter_by(user_id=user_id).first()
 
-        current_hour = datetime.utcnow().hour
         device_type = user.device
 
         personalized_products = (
@@ -205,7 +203,6 @@ async def get_personalized_recommendations(user_id: Optional[int], db: Session, 
 async def get_contextual_recommendations(user_id: Optional[int], db: Session, limit: int = 5) -> List[int]:
     try:
         logger.info(f"Fetching contextual recommendations for user_id={user_id}")
-        user = db.query(models.User).filter_by(user_id=user_id).first()
 
         current_day = datetime.utcnow().strftime('%A')
         current_season = get_current_season()
@@ -218,7 +215,7 @@ async def get_contextual_recommendations(user_id: Optional[int], db: Session, li
 
         if not relevant_signals:
             logger.info(f"No relevant contextual signals for user_id={user_id}, falling back to trending products")
-            return await get_trending_products(db, user_id, limit)  # Fallback if no relevant signals
+            return await get_trending_products(db, user_id, limit)
 
         relevant_categories = [signal.category for signal in relevant_signals]
         contextual_products = (
@@ -247,14 +244,14 @@ async def get_svd_recommendations(user_id: Optional[int], db: Session, limit: in
         data = {
             "user_id": [i.user_id for i in interactions],
             "product_id": [i.product_id for i in interactions],
-            "rating": [i.quantity for i in interactions]  # Using quantity as implicit feedback
+            "rating": [i.quantity for i in interactions]
         }
 
         df = pd.DataFrame(data)
 
         if df.empty or (user_id is not None and user_id not in df["user_id"].values):
             logger.warning(f"No interactions found for user_id={user_id}, falling back to trending products")
-            return await get_trending_products(db, user_id, limit)  # Cold start fallback
+            return await get_trending_products(db, user_id, limit)
 
         # Convert to sparse matrix
         unique_users = df["user_id"].unique()
@@ -263,7 +260,6 @@ async def get_svd_recommendations(user_id: Optional[int], db: Session, limit: in
         user_map = {u: i for i, u in enumerate(unique_users)}
         product_map = {p: i for i, p in enumerate(unique_products)}
 
-        user_inv_map = {i: u for u, i in user_map.items()}
         product_inv_map = {i: p for p, i in product_map.items()}
 
         rows = df["user_id"].map(user_map)
